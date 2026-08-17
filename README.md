@@ -1,56 +1,71 @@
-# Telegram Daily Brief Bot
+# 🤖 Telegram Daily Brief Bot
 
-Bot tự động gửi brief buổi sáng + alert intraday mỗi khi có biến động đáng kể.
+Bot tự động gửi brief buổi sáng + alert intraday khi có biến động đáng kể.
+
+## Tính năng
+
+- ☀️ **7:30 sáng** — Morning brief tổng hợp
+- 🔔 **Mỗi 1 tiếng** — Poll intraday, gửi alert nếu vượt threshold
+- 🟢🔴 Màu xanh/đỏ thể hiện tăng/giảm
+
+## Nguồn dữ liệu
+
+| Module | Nguồn | Ghi chú |
+|--------|-------|---------|
+| 🌦 Thời tiết | OpenWeatherMap API | Cần API key |
+| 💵 USD/VND | Vietcombank XML | Public, không cần key |
+| 🥇 Vàng | GoldAPI.io | Free 100 req/tháng, chỉ gọi 1 lần/ngày |
+| 📈 Stock | VNDirect API | Public, không cần key |
+| 🪙 Crypto | CoinGecko API | Free, không cần key |
+| 🤖 AI News | RSS feeds | The Verge, MIT Tech Review, VnExpress |
 
 ## Cấu trúc
 
 ```
-telegram_bot/
+bot_telegram/
 ├── main.py              # Entry point
-├── config.py            # Toàn bộ config + threshold
+├── config.py            # Config + thresholds (secrets load từ .env)
 ├── requirements.txt
-├── state.json           # Tự tạo khi chạy (lưu giá trị poll trước)
+├── .env                 # Secrets (KHÔNG commit lên Git)
+├── .env.example         # Template cho .env
 └── modules/
-    ├── weather.py       # Thời tiết OpenWeatherMap
-    ├── usd.py           # Tỷ giá (Vietcombank → fallback ExchangeRate)
-    ├── gold.py          # Vàng SJC (sjc.com.vn XML → fallback btmc.vn)
-    ├── stock.py         # Cổ phiếu (SSI → Vietstock → CafeF)
-    ├── hardware.py      # Giá PC GearVN
-    ├── ai_news.py       # RSS AI News
-    ├── sender.py        # Gửi Telegram
-    ├── poller.py        # Gom tất cả alert mỗi 1 tiếng
-    └── state.py         # Đọc/ghi state.json
+    ├── weather.py
+    ├── usd.py
+    ├── gold.py
+    ├── stock.py
+    ├── crypto.py
+    ├── ai_news.py
+    ├── sender.py
+    ├── poller.py
+    └── state.py         # Đọc/ghi state.json (runtime cache)
 ```
 
-## Cài đặt trên Ubuntu
+## Cài đặt
 
 ```bash
-# 1. Clone / copy code vào server
-cd ~
-mkdir telegram_bot && cd telegram_bot
-# (copy files vào đây)
+# 1. Clone repo
+git clone https://github.com/maixuanthuan/bot_telegram.git
+cd bot_telegram
 
 # 2. Cài dependencies
-pip3 install -r requirements.txt
+pip install -r requirements.txt
 
-# 3. Test các module (không gửi Telegram)
-python3 main.py test
+# 3. Tạo file .env
+cp .env.example .env
+# Điền API keys vào .env
 
-# 4. Gửi brief ngay để test Telegram
-python3 main.py now
-
-# 5. Test poll alert ngay
-python3 main.py poll
+# 4. Test
+python main.py test    # Kiểm tra từng module
+python main.py now     # Gửi brief lên Telegram ngay
+python main.py poll    # Test alert intraday
 ```
 
-## Deploy chạy 24/7 với systemd
+## Deploy 24/7 với systemd
 
 ```bash
-# Tạo service file
 sudo nano /etc/systemd/system/tgbot.service
 ```
 
-Nội dung file:
 ```ini
 [Unit]
 Description=Telegram Daily Brief Bot
@@ -59,8 +74,8 @@ After=network.target
 [Service]
 Type=simple
 User=YOUR_USERNAME
-WorkingDirectory=/home/YOUR_USERNAME/telegram_bot
-ExecStart=/usr/bin/python3 /home/YOUR_USERNAME/telegram_bot/main.py
+WorkingDirectory=/home/YOUR_USERNAME/bot_telegram
+ExecStart=/usr/bin/python3 /home/YOUR_USERNAME/bot_telegram/main.py
 Restart=always
 RestartSec=10
 
@@ -69,40 +84,26 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# Enable và start
 sudo systemctl daemon-reload
 sudo systemctl enable tgbot
 sudo systemctl start tgbot
-
-# Xem log
-sudo journalctl -u tgbot -f
+sudo journalctl -u tgbot -f  # Xem log realtime
 ```
 
-## Config thresholds (config.py)
+## Config thresholds
 
 ```python
 "THRESHOLDS": {
-    "usd_pct":         0.3,   # Alert khi USD/VND thay đổi >= 0.3%
-    "gold_pct":        0.5,   # Alert khi vàng SJC thay đổi >= 0.5%
-    "stock_pct":       1.0,   # Alert khi cổ phiếu thay đổi >= 1.0%
-    "hardware_pct":    2.0,   # Alert khi giá hardware thay đổi >= 2.0%
-    "rain_pop_trigger": 70,   # Alert khi khả năng mưa tăng lên >= 70%
-    "news_always_alert": True, # Luôn alert khi có bài AI News mới
+    "usd_pct":           0.3,    # USD/VND thay đổi >= 0.3%
+    "gold_pct":          100.0,  # Gold không alert intraday
+    "stock_pct":         1.0,    # Stock thay đổi >= 1.0%
+    "crypto_pct":        2.0,    # Crypto thay đổi >= 2.0%
+    "rain_pop_trigger":  70,     # Mưa >= 70%
+    "news_always_alert": True,   # Luôn alert khi có tin mới
 }
 ```
-
-## Nguồn dữ liệu
-
-| Module   | Nguồn chính          | Fallback        |
-|----------|----------------------|-----------------|
-| USD/VND  | Vietcombank XML      | ExchangeRate-API|
-| Vàng SJC | sjc.com.vn/xml       | btmc.vn scrape  |
-| Stock    | SSI iBoard API       | Vietstock → CafeF |
-| Weather  | OpenWeatherMap       | —               |
-| Hardware | GearVN scrape        | —               |
-| AI News  | RSS (Verge/MIT/VNE)  | —               |
 
 ## Lịch chạy
 
 - **7:30 sáng**: Morning brief đầy đủ
-- **Mỗi 1 tiếng**: Poll tất cả nguồn, gửi alert nếu vượt threshold
+- **Mỗi 1 tiếng**: Poll intraday, gửi alert nếu có biến động
